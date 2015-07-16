@@ -17,7 +17,7 @@ word_t bytes = 0;
 void*     artMalloc                (size_t);
 void      artNodeAddChild          (artNode**, artNode*, byte_t);
 void      artNodeReplaceChild      (artNode*, artNode*, byte_t);
-artNode* artNodeGetChild           (artNode*, byte_t);
+artNode*  artNodeGetChild          (artNode*, byte_t);
 void      artNodeRemoveChild       (artNode**, byte_t);
 void      artNodeResize            (artNode**, int);
 void*     artNodeAlloc             (int);
