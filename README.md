@@ -4,3 +4,4 @@ A highly compressed radix tree heavily based on the Adaptive Radix Tree ([paper]
 ##### features
 * very portable - clean C89 implementation
 * designed as a primary indexing data structure - the paper above describes a data structure for secondary indexing
+* non recursive update algorithms 
