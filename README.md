@@ -7,5 +7,4 @@ A highly compressed radix tree heavily based on the Adaptive Radix Tree ([paper]
 * non recursive update algorithms 
 
 ##### todo
-* prefix lookup
-* add comments :(
+* iteration

@@ -28,6 +28,11 @@ typedef struct {
 } artNodeHeader;
 
 typedef struct {
+  word_t val;
+  void*  next;
+} artVal;
+
+typedef struct {
   artNodeHeader head;
 } artNode;
 
@@ -85,5 +90,6 @@ void      artPut                   (Art*, byte_t*, int, word_t);
 word_t    artGet                   (Art*, byte_t*, int);
 int       artRemove                (Art*, byte_t*, int);
 Art*      artNew                   (void);
+artVal*   artGetWithPrefix         (Art*, byte_t*, int);
 
 #endif

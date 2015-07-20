@@ -120,7 +120,8 @@ void numberBench (Art* d) {
 int main (int argc, char** argv) {
   word_t val;
   Art* d = artNew();
-  
+  artVal* vals;
+
   if (argc < 2) {
     return 1;
   }
@@ -129,13 +130,18 @@ int main (int argc, char** argv) {
   puts("Press enter to continue...");
   getchar();
   
-  numberBench(d);
-  puts("Press enter to continue...");
-  getchar();
-  
   getBench(d, argv[1]);
   puts("Press enter to continue...");
   getchar();
+
+  vals = artGetWithPrefix(d, (byte_t *)"ca", 2);
+  while (vals) {
+    printf("%s\n", (char *)vals->val);
+    vals = vals->next;
+  }
+  puts("Press enter to continue...");
+  getchar();
+
   
   deleteBench(d, argv[1]);
   puts("Press enter to continue...");

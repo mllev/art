@@ -33,6 +33,10 @@ byte_t*   artNodeGetPrefix         (artNode*);
 void      artNodeSetVal            (artNode**, word_t);
 void      artNodeCopyPrefix        (artNode*, artNode*);
 word_t    artNodeGetVal            (artNode*);
+artNode*  artGetNode               (Art*, byte_t*, int, int); 
+void      __artGetWithPrefix       (artNode*, artVal*);
+
+void artNodePrintDetails (artNode*);
 
 void* artMalloc (size_t size) {
   void* buf = malloc(size);
@@ -850,27 +854,10 @@ word_t artNodeGetVal (artNode* n) {
 }
 
 word_t artGet (Art* art, byte_t* k, int l) {
-  artNode *d, *tmp;
-  int i, pfx = 0, ptr = 0;
+  artNode *d;
   word_t v;
 
-  d = art->root;
-
-  if (!d || l > 255)
-    return (word_t)0;
-
-  for (i = 0; i < l; ) {
-    pfx = artNodeCheckPrefix(d, k, l, i);
-    if (pfx != d->head.plen) return (word_t)0;
-    i += pfx;
-    tmp = artNodeGetChild(d, k[i]);
-    if (tmp && i < l) {
-      d = tmp;
-      ptr++;
-      continue;
-    }
-    break;
-  }
+  d = artGetNode(art, k, l, 0);
   v = artNodeGetVal(d);
   return v;
 }
@@ -942,12 +929,118 @@ int artRemove (Art* art, byte_t* k, int l) {
     } else {
       break;
     }
-
     stack[i - 1] = (word_t)p;
   }
   
   art->root = (artNode *)stack[0];
   return 1;
+}
+
+artNode* artGetNode (Art* art, byte_t* k, int l, int p) {
+  artNode *d, *tmp;
+  int i, pfx = 0;
+  word_t v;
+
+  d = art->root;
+
+  if (!d || l > 255)
+    return NULL;
+
+  for (i = 0; i < l; ) {
+    pfx = artNodeCheckPrefix(d, k, l, i);
+    if (pfx != d->head.plen) {
+      if (!p || !pfx || pfx != l) return NULL;
+      else return d;
+    }
+    i += pfx;
+    tmp = artNodeGetChild(d, k[i]);
+    if (tmp && i < l) {
+      d = tmp;
+      continue;
+    }
+    if (p) {
+      if (i == l) return d;
+      else return NULL;
+    }
+    break;
+  }
+  return d;
+}
+
+void __artGetWithPrefix (artNode* n, artVal* v) {
+  artNodeSingle* p;
+  artNodeLinear* l;
+  artNodeLinear16* l16;
+  artNodeSpan* s;
+  artNodeRadix* r;
+  artVal* iter;
+  int ln, i;
+  byte_t type;
+  word_t val;
+
+  if (!n) return;
+  val = artNodeGetVal(n);
+  if (val) {
+    iter = v;
+    while (iter->next)
+      iter = (artVal *)iter->next;
+    iter->next = artMalloc(sizeof(artVal));
+    iter = (artVal *)iter->next;
+    iter->next = NULL;
+    iter->val = val;
+  }
+
+  ln = n->head.plen;
+  type = n->head.type;
+
+  switch (type) {
+  case _SINGLE:
+    p = (artNodeSingle *)n;
+    __artGetWithPrefix((artNode *)p->radix, v);
+  break;
+  case _INNER:
+  case _LINEAR:
+    l = (artNodeLinear *)n;
+    for (i = 0; i < _LINEAR; i++)
+      __artGetWithPrefix((artNode *)l->radix[i], v);
+  break;
+  case _LINEAR16:
+    l16 = (artNodeLinear16 *)n;
+    for (i = 0; i < _LINEAR16; i++)
+      __artGetWithPrefix((artNode *)l16->radix[i], v);
+  break;
+  case _SPAN:
+    s = (artNodeSpan *)n;
+    for (i = 0; i < _SPAN; i++)
+      __artGetWithPrefix((artNode *)s->radix[i], v);
+  break;
+  case _RADIX:
+    r = (artNodeRadix *)n;
+    for (i = 0; i < 256; i++)
+      __artGetWithPrefix((artNode *)r->radix[i], v);
+  break;
+  default: return;
+  }
+  return;
+}
+
+artVal* artGetWithPrefix (Art* art, byte_t* p, int l) {
+  artNode* d;
+  artVal* v, *del;
+  v = artMalloc(sizeof(artVal));
+  v->val = (word_t)0;
+  v->next = NULL;
+  d = artGetNode(art, p, l, 1);
+  __artGetWithPrefix(d, v);
+  if (v->next) {
+    del = v;
+    v = v->next;
+    free(del);
+  } else {
+    free(v);
+    v = NULL;
+  }
+  return v;
 }
 
 /* testing */
