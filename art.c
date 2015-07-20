@@ -30,7 +30,7 @@ int       artNodeCheckPrefix       (artNode*, byte_t*, int, int);
 void      artNodeSetPrefix         (artNode*, byte_t*, int);
 void      artNodeMergeWithChild    (artNode**);
 byte_t*   artNodeGetPrefix         (artNode*); 
-void      artNodeSetVal            (artNode*, word_t);
+void      artNodeSetVal            (artNode**, word_t);
 void      artNodeCopyPrefix        (artNode*, artNode*);
 word_t    artNodeGetVal            (artNode*);
 
@@ -165,6 +165,9 @@ void* artNodeAlloc (int type) {
     case _SINGLE:  
       s = sizeof(artNodeSingle);
     break;
+    case _INNER:
+      s = sizeof(artNodeInner);
+    break;
     case _LINEAR:
       s = sizeof(artNodeLinear);
     break;
@@ -198,6 +201,10 @@ void artNodeFree (artNode* n) {
     case _SINGLE:
       bytes -= sizeof(artNodeSingle);
       free((artNodeSingle *)n);
+    break;
+    case _INNER:
+      bytes -= sizeof(artNodeInner);
+      free((artNodeInner *)n);
     break;
     case _LINEAR:
       bytes -= sizeof(artNodeLinear);
@@ -238,7 +245,8 @@ artNode* artNodeGetChild (artNode* n, byte_t b) {
       ret = (artNode *)p->radix;
     }
   break;
-  case _LINEAR: 
+  case _INNER:
+  case _LINEAR:
     l = (artNodeLinear *)n;
     for (i = 0; i < _LINEAR; i++) {
       if (l->map[i] == b) {
@@ -275,6 +283,7 @@ artNode* artNodeGetChild (artNode* n, byte_t b) {
 void artNodeResize (artNode** n, int grow) {
   artNodeSingle* p;
   artNodeLinear* l;
+  artNodeInner* in;
   artNodeLinear16* l16;
   artNodeSpan* s;
   artNodeRadix* r;
@@ -294,8 +303,8 @@ void artNodeResize (artNode** n, int grow) {
     *n = (artNode *)p;
   break;
   case _SINGLE:
-    if (grow) {
-      p = (artNodeSingle *)*n;
+    p = (artNodeSingle *)*n;
+    if (grow && p->val) {
       l = (artNodeLinear *)artNodeAlloc(_LINEAR);
       l->head.type = _LINEAR;
       l->map[0] = p->map;
@@ -305,8 +314,16 @@ void artNodeResize (artNode** n, int grow) {
       artNodeCopyPrefix((artNode *)l, *n);
       artNodeFree(*n);
       *n = (artNode *)l;
+    } else if (grow) {
+      in = (artNodeInner *)artNodeAlloc(_INNER);
+      in->head.type = _INNER;
+      in->map[0] = p->map;
+      in->radix[0] = p->radix;
+      in->head.rcnt = p->head.rcnt;
+      artNodeCopyPrefix((artNode *)in, *n);
+      artNodeFree(*n);
+      *n = (artNode *)in;
     } else {
-      p = (artNodeSingle *)*n;
       k = (artNodeLeaf *)artNodeAlloc(_LEAF);
       k->head.type = _LEAF;
       k->val = p->val;
@@ -314,6 +331,40 @@ void artNodeResize (artNode** n, int grow) {
       artNodeCopyPrefix((artNode *)k, *n);
       artNodeFree(*n);
       *n = (artNode *)k;
+    }
+  break;
+  case _INNER:
+    if (grow) {
+      int i;
+      in = (artNodeInner *)*n;
+      l16 = (artNodeLinear16 *)artNodeAlloc(_LINEAR16);
+      l16->head.type = _LINEAR16;
+      for (i = 0; i < _LINEAR; i++) {
+        l16->map[i] = in->map[i];
+        l16->radix[i] = in->radix[i];
+      }
+      l16->val = (word_t)0;
+      l16->head.rcnt = in->head.rcnt;
+      artNodeCopyPrefix((artNode *)l16, *n);
+      artNodeFree(*n);
+      *n = (artNode *)l16;
+    } else {
+      int i;
+      in = (artNodeInner *)*n;
+      p = (artNodeSingle *)artNodeAlloc(_SINGLE);
+      p->head.type = _SINGLE;
+      for (i = 0; i < _LINEAR; i++) {
+        if (in->radix[i]) {
+          p->map = in->map[i];
+          p->radix = in->radix[i];
+          break;
+        }
+      }
+      p->val = (word_t)0;
+      p->head.rcnt = in->head.rcnt;
+      artNodeCopyPrefix((artNode *)p, *n);
+      artNodeFree(*n);
+      *n = (artNode *)p;
     }
   break;
   case _LINEAR:
@@ -351,6 +402,7 @@ void artNodeResize (artNode** n, int grow) {
     }
   break;
   case _LINEAR16:
+    l16 = (artNodeLinear16 *)*n;
     if (grow) {
       int i;
       l16 = (artNodeLinear16 *)*n;
@@ -366,9 +418,22 @@ void artNodeResize (artNode** n, int grow) {
       artNodeCopyPrefix((artNode *)s, *n);
       artNodeFree(*n);
       *n = (artNode *)s;
+    } else if (!l16->val) {
+      int i, j = 0;
+      in = (artNodeInner *)artNodeAlloc(_INNER);
+      in->head.type = _INNER;
+      for (i = 0; i < _LINEAR16; i++) {
+        if (l16->radix[i]) {
+          in->map[j] = l16->map[i];
+          in->radix[j++] = l16->radix[i];
+        }
+      }
+      in->head.rcnt = l16->head.rcnt;
+      artNodeCopyPrefix((artNode *)in, *n);
+      artNodeFree(*n);
+      *n = (artNode *)in;
     } else {
       int i, j = 0;
-      l16 = (artNodeLinear16 *)*n;
       l = (artNodeLinear *)artNodeAlloc(_LINEAR);
       l->head.type = _LINEAR;
       for (i = 0; i < _LINEAR16; i++) {
@@ -452,7 +517,8 @@ void artNodeRemoveChild (artNode** n, byte_t b) {
   type = (*n)->head.type;
 
   switch (type) {
-    case _SINGLE:   rl = _LEAF;      break;
+    case _SINGLE:   rl = _LEAF;     break;
+    case _INNER:    rl = _SINGLE;   break;
     case _LINEAR:   rl = _SINGLE;   break;
     case _LINEAR16: rl = _LINEAR;   break;
     case _SPAN:     rl = _LINEAR16; break;
@@ -467,7 +533,8 @@ void artNodeRemoveChild (artNode** n, byte_t b) {
       p->head.rcnt = 0;
     }
   break;
-  case _LINEAR: 
+  case _INNER:
+  case _LINEAR:
     l = (artNodeLinear *)*n;
     for (i = 0; i < _LINEAR; i++) {
       if (l->map[i] == b && l->radix[i]) {
@@ -527,6 +594,7 @@ void artNodeReplaceChild (artNode* n, artNode* c, byte_t b) {
       p->radix = (word_t)c;
     }
   break;
+  case _INNER:
   case _LINEAR: {
     int i;
     l = (artNodeLinear *)n;
@@ -571,7 +639,8 @@ void artNodeAddChild (artNode** n, artNode* c, byte_t b) {
 
   type = (*n)->head.type;
 
-  if (type != _RADIX && type == (*n)->head.rcnt) {
+  if ((type != _RADIX && type == (*n)->head.rcnt)
+    || (type == _INNER && (*n)->head.rcnt == type - 1)) {
     artNodeResize(n, 1);
     type = (*n)->head.type;
   }
@@ -583,6 +652,7 @@ void artNodeAddChild (artNode** n, artNode* c, byte_t b) {
     p->radix = (word_t)c;
     p->head.rcnt = 1;
   break;
+  case _INNER:
   case _LINEAR: {
     int i;
     l = (artNodeLinear *)*n;
@@ -624,37 +694,67 @@ void artNodeAddChild (artNode** n, artNode* c, byte_t b) {
   }
 }
 
-void artNodeSetVal (artNode* n, word_t v) {
+void artNodeSetVal (artNode** n, word_t v) {
   artNodeSingle* p;
   artNodeLinear* l;
+  artNodeInner* in;
   artNodeLinear16* l16;
   artNodeSpan* s;
   artNodeRadix* r;
   artNodeLeaf* k;
+  int i;
 
-  switch (n->head.type) {
+  switch ((*n)->head.type) {
     case _LEAF:
-      k = (artNodeLeaf *)n;
+      k = (artNodeLeaf *)*n;
       k->val = v;
     break;
     case _SINGLE:
-      p = (artNodeSingle *)n;
+      p = (artNodeSingle *)*n;
       p->val = v;
     break;
-    case _LINEAR:
-      l = (artNodeLinear *)n;
+    case _INNER:
+      if (!v) break;
+      in = (artNodeInner *)*n;
+      l = artNodeAlloc(_LINEAR);
+      for (i = 0; i < _LINEAR; i++) {
+        l->map[i] = in->map[i];
+        l->radix[i] = in->radix[i];
+      }
+      l->head.rcnt = in->head.rcnt;
+      artNodeCopyPrefix((artNode *)l, *n);
+      l->head.type = _LINEAR;
       l->val = v;
+      artNodeFree(*n);
+      *n = (artNode *)l;
+    break;
+    case _LINEAR:
+      l = (artNodeLinear *)*n;
+      if (!v) {
+        in = artNodeAlloc(_INNER);
+        for (i = 0; i < _LINEAR; i++) {
+          in->map[i] = l->map[i];
+          in->radix[i] = l->radix[i];
+        }
+        in->head.rcnt = l->head.rcnt;
+        artNodeCopyPrefix((artNode *)in, *n);
+        in->head.type = _INNER;
+        artNodeFree(*n);
+        *n = (artNode *)in;
+      } else {
+        l->val = v;
+      }
     break;
     case _LINEAR16:
-      l16 = (artNodeLinear16 *)n;
+      l16 = (artNodeLinear16 *)*n;
       l16->val = v;
     break;
     case _SPAN:
-      s = (artNodeSpan *)n;
+      s = (artNodeSpan *)*n;
       s->val = v;
     break;
     case _RADIX:
-      r = (artNodeRadix *)n;
+      r = (artNodeRadix *)*n;
       r->val = v;
     break;
     default:  break;
@@ -686,8 +786,8 @@ void artPut (Art* art, byte_t* k, int l, word_t v) {
         artNodeSetPrefix(n1, k, l);
         artNodeMovePrefix(n1, i + pfx);
         artNodeAddChild(&n0, n1, s1);
-        artNodeSetVal(n1, v);
-      } else artNodeSetVal(n0, v);
+        artNodeSetVal(&n1, v);
+      } else artNodeSetVal(&n0, v);
       artNodeReplaceChild(p, n0, pchar);
       if (rt) art->root = p;
       break;
@@ -701,11 +801,12 @@ void artPut (Art* art, byte_t* k, int l, word_t v) {
       continue;
     }
     if (i == l) {
-      artNodeSetVal(d, v);
+      artNodeSetVal(&d, v);
+      artNodeReplaceChild(p, d, pchar);
       break;
     }
     n0 = artNodeAlloc(_LEAF);
-    artNodeSetVal(n0, v);
+    artNodeSetVal(&n0, v);
     artNodeSetPrefix(n0, k + i, l - i);
     tmp = d;
     rt = (d == art->root);
@@ -808,10 +909,22 @@ int artRemove (Art* art, byte_t* k, int l) {
 
   if (!artNodeGetVal(d)) 
     return 0;
+
   /* custom destroy node value function */
-  artNodeSetVal(d, (word_t)NULL);
-  if (d->head.type != _LEAF)
+
+  tmp = d;
+  artNodeSetVal(&d, (word_t)NULL);
+
+  if (tmp != d) {
+    stack[sptr] = (word_t)d;
+    artNodeReplaceChild((artNode *)stack[sptr-1], d, schars[sptr - 1]);
+  }
+
+  if (d->head.type != _LEAF) {
     return 1;
+  }
+
+  stack[sptr] = (word_t)d;
 
   for (i = sptr; i > 0; i--) {
     d = (artNode *)stack[i];
@@ -829,6 +942,7 @@ int artRemove (Art* art, byte_t* k, int l) {
     } else {
       break;
     }
+
     stack[i - 1] = (word_t)p;
   }
   
@@ -836,31 +950,26 @@ int artRemove (Art* art, byte_t* k, int l) {
   return 1;
 }
 
-/* testing funcs */
-
-void artNodePrintPrefix (artNode* n) {
-  int s = sizeof(word_t), l = n->head.plen, i;
-  byte_t *p = artNodeGetPrefix(n);
-  for (i = 0; i < l; i++)
-    printf("%c", p[i]);
-}
-
+/* testing */
 void artNodePrintDetails (artNode* n) {
-  int i;
+  int i, ln;
   artNodeSingle* p;
   artNodeLinear* l;
   artNodeLinear16* l16;
   artNodeSpan* s;
   artNodeRadix* r;
   artNodeLeaf* k;
-  byte_t type;
+  byte_t type, *pfx;
 
   printf("----------------------------\n");
   printf("Address: 0x%lx\n", (word_t)n);
   printf("Prefix length: %d\n", (int)n->head.plen);
   printf("Type: %d\n", (int)n->head.type);
   printf("Prefix: \"");
-  artNodePrintPrefix(n);
+  ln = n->head.plen;
+  pfx = artNodeGetPrefix(n);
+  for (i = 0; i < ln; i++)
+    printf("%c", pfx[i]);
   printf("\"\n");
 
   type = n->head.type;
@@ -875,9 +984,11 @@ void artNodePrintDetails (artNode* n) {
       printf("Children: | ");
       printf("0x%lx | ", p->radix);
     break;
+    case _INNER:
     case _LINEAR:
       l = (artNodeLinear *)n;
-      printf("Value: \"%s\"\n", (char *)l->val);
+      if (type != _INNER)
+        printf("Value: \"%s\"\n", (char *)l->val);
       printf("Children: | ");
       for (i = 0; i < _LINEAR; i++)
         printf("0x%lx | ", l->radix[i]);

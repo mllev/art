@@ -15,6 +15,7 @@ typedef unsigned long word_t;
 #define _LEAF     0
 #define _SINGLE   1
 #define _LINEAR   4
+#define _INNER    5
 #define _LINEAR16 16
 #define _SPAN     48
 #define _RADIX    255
@@ -50,6 +51,12 @@ typedef struct {
   artNodeHeader  head;
   byte_t         map[_LINEAR];
   word_t         radix[_LINEAR];
+} artNodeInner;
+
+typedef struct {
+  artNodeHeader  head;
+  byte_t         map[_LINEAR];
+  word_t         radix[_LINEAR];
   word_t         val;
 } artNodeLinear;
 
@@ -78,9 +85,5 @@ void      artPut                   (Art*, byte_t*, int, word_t);
 word_t    artGet                   (Art*, byte_t*, int);
 int       artRemove                (Art*, byte_t*, int);
 Art*      artNew                   (void);
-
-/* for tests */
-void artNodePrintDetails (artNode*);
-void artNodePrintPrefix  (artNode*);
 
 #endif

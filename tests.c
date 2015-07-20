@@ -68,7 +68,6 @@ void deleteBench (Art* d, char* file) {
     /*if (wc == 10001) break;*/
     free(word);
     word = NULL;
-    /* if (wc == 1000) break; */
   }
   end = (float)clock()/CLOCKS_PER_SEC;
   printf("Deleted %d words.\n", wc);
@@ -129,11 +128,11 @@ int main (int argc, char** argv) {
   wordBench(d, argc, argv);
   puts("Press enter to continue...");
   getchar();
-  /*
+  
   numberBench(d);
   puts("Press enter to continue...");
   getchar();
-  */
+  
   getBench(d, argv[1]);
   puts("Press enter to continue...");
   getchar();
