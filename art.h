@@ -28,8 +28,9 @@ typedef struct {
 } artNodeHeader;
 
 typedef struct {
-  word_t val;
-  void*  next;
+  word_t  val;
+  byte_t* key;
+  void*   next;
 } artVal;
 
 typedef struct {

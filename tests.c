@@ -134,9 +134,9 @@ int main (int argc, char** argv) {
   puts("Press enter to continue...");
   getchar();
 
-  vals = artGetWithPrefix(d, (byte_t *)"ca", 2);
+  vals = artGetWithPrefix(d, (byte_t *)"far", 2);
   while (vals) {
-    printf("%s\n", (char *)vals->val);
+    printf("key: %s\nvalue: %s\n", vals->key, (char *)vals->val);
     vals = vals->next;
   }
   puts("Press enter to continue...");

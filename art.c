@@ -34,7 +34,7 @@ void      artNodeSetVal            (artNode**, word_t);
 void      artNodeCopyPrefix        (artNode*, artNode*);
 word_t    artNodeGetVal            (artNode*);
 artNode*  artGetNode               (Art*, byte_t*, int, int); 
-void      __artGetWithPrefix       (artNode*, artVal*);
+void      __artGetWithPrefix       (artNode*, artVal*, byte_t*, int);
 
 void artNodePrintDetails (artNode*);
 
@@ -967,18 +967,25 @@ artNode* artGetNode (Art* art, byte_t* k, int l, int p) {
   return d;
 }
 
-void __artGetWithPrefix (artNode* n, artVal* v) {
+void __artGetWithPrefix (artNode* n, artVal* v, byte_t* pref, int plen) {
   artNodeSingle* p;
   artNodeLinear* l;
   artNodeLinear16* l16;
   artNodeSpan* s;
   artNodeRadix* r;
   artVal* iter;
-  int ln, i;
+  int ln, i, nplen;
   byte_t type;
   word_t val;
+  byte_t* npref;
 
   if (!n) return;
+  if (n->head.plen || plen) {
+    npref = malloc(n->head.plen + plen);
+    memcpy(npref, pref, plen);
+    memcpy(npref + plen, artNodeGetPrefix(n), n->head.plen);
+  }
+  nplen = n->head.plen + plen;
   val = artNodeGetVal(n);
   if (val) {
     iter = v;
@@ -988,6 +995,7 @@ void __artGetWithPrefix (artNode* n, artVal* v) {
     iter = (artVal *)iter->next;
     iter->next = NULL;
     iter->val = val;
+    iter->key = npref;
   }
 
   ln = n->head.plen;
@@ -996,28 +1004,28 @@ void __artGetWithPrefix (artNode* n, artVal* v) {
   switch (type) {
   case _SINGLE:
     p = (artNodeSingle *)n;
-    __artGetWithPrefix((artNode *)p->radix, v);
+    __artGetWithPrefix((artNode *)p->radix, v, npref, nplen);
   break;
   case _INNER:
   case _LINEAR:
     l = (artNodeLinear *)n;
     for (i = 0; i < _LINEAR; i++)
-      __artGetWithPrefix((artNode *)l->radix[i], v);
+      __artGetWithPrefix((artNode *)l->radix[i], v, npref, nplen);
   break;
   case _LINEAR16:
     l16 = (artNodeLinear16 *)n;
     for (i = 0; i < _LINEAR16; i++)
-      __artGetWithPrefix((artNode *)l16->radix[i], v);
+      __artGetWithPrefix((artNode *)l16->radix[i], v, npref, nplen);
   break;
   case _SPAN:
     s = (artNodeSpan *)n;
     for (i = 0; i < _SPAN; i++)
-      __artGetWithPrefix((artNode *)s->radix[i], v);
+      __artGetWithPrefix((artNode *)s->radix[i], v, npref, nplen);
   break;
   case _RADIX:
     r = (artNodeRadix *)n;
     for (i = 0; i < 256; i++)
-      __artGetWithPrefix((artNode *)r->radix[i], v);
+      __artGetWithPrefix((artNode *)r->radix[i], v, npref, nplen);
   break;
   default: return;
   }
@@ -1031,7 +1039,7 @@ artVal* artGetWithPrefix (Art* art, byte_t* p, int l) {
   v->val = (word_t)0;
   v->next = NULL;
   d = artGetNode(art, p, l, 1);
-  __artGetWithPrefix(d, v);
+  __artGetWithPrefix(d, v, p, l - d->head.plen);
   if (v->next) {
     del = v;
     v = v->next;
